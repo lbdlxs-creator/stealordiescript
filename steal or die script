@@ -1,0 +1,484 @@
+--=============================================================
+-- VENICE HUB | STEAL OR DIE | v5  (PARTE 1/3)
+--=============================================================
+local Players    = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace  = game:GetService("Workspace")
+local UIS        = game:GetService("UserInputService")
+local CS         = game:GetService("CollectionService")
+
+local LP     = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+
+local Config = {
+	Enabled=true, Items=true, Closets=true, Doors=true, Survivors=true,
+	Monster=true, Highlight=true, Chams=true, Distance=true, MaxDist=600,
+}
+
+local C_ITEM    = Color3.fromRGB(255,200,60)
+local C_CLOSET  = Color3.fromRGB(110,215,255)
+local C_DOOR    = Color3.fromRGB(190,140,255)
+local C_SURV    = Color3.fromRGB(60,255,110)
+local C_MONSTER = Color3.fromRGB(255,60,60)
+
+local ITEM_GOOD = {"phone","wallet","gold","laptop","ring","watch","camera","vase","painting",
+	"jewel","gem","coin","cash","silver","diamond","statue","clock","necklace","bracelet",
+	"tablet","console","bar","artifact","treasure","valuable","steal","pick","grab","take","loot"}
+local CLOSET_KEYS = {"closet","locker","wardrobe","cabinet","hide","hiding","cupboard"}
+local DOOR_KEYS   = {"door","gate","exit","entrance","barricade"}
+local MON_WORDS   = {"entity","monster","locust","hollow","hunter","creature","killer","beast",
+	"wendell","rictus","stalker","brute"}
+local STRONG_ATTRS = {"IsEntity","IsMonster","Monster","Entity"}
+local KIND_ATTRS   = {"EntityKind","MonsterKind","EntityType"}
+
+local Store = {}
+
+local function lower(s) return string.lower(tostring(s)) end
+
+local function matches(t, list)
+	t = lower(t)
+	for _, k in ipairs(list) do
+		if string.find(t, k, 1, true) then return true end
+	end
+	return false
+end
+
+local function short(s, n)
+	s = tostring(s)
+	if #s > n then return s:sub(1, n) .. "..." end
+	return s
+end
+
+local function anchorOf(o)
+	if o:IsA("BasePart") then return o end
+	if o:IsA("Model") then return o.PrimaryPart or o:FindFirstChildWhichIsA("BasePart", true) end
+	return nil
+end
+
+local function hasValueAttr(o)
+	for a in pairs(o:GetAttributes()) do
+		local s = lower(a)
+		if s:find("value") or s:find("weight") or s:find("price")
+			or s:find("worth") or s:find("rarity") or s:find("cost") then
+			return true
+		end
+	end
+	return false
+end
+
+local function createEsp(obj, kind, color, text)
+	if Store[obj] then return end
+	local a = anchorOf(obj)
+	if not a then return end
+
+	local bill = Instance.new("BillboardGui")
+	bill.Name = "VH_ESP"
+	bill.Size = UDim2.fromOffset(260, 26)
+	bill.StudsOffsetWorldSpace = Vector3.new(0, 1.4, 0)
+	bill.AlwaysOnTop = true
+	bill.MaxDistance = Config.MaxDist
+	bill.Adornee = a
+	bill.Parent = a
+
+	local lbl = Instance.new("TextLabel")
+	lbl.Name = "Txt"
+	lbl.BackgroundTransparency = 1
+	lbl.Size = UDim2.fromScale(1, 1)
+	lbl.Font = Enum.Font.GothamBold
+	lbl.TextSize = kind == "monster" and 14 or 13
+	lbl.TextColor3 = color
+	lbl.TextStrokeTransparency = 0.2
+	lbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+	lbl.Text = text
+	lbl.Parent = bill
+
+	local hl
+	if Config.Highlight or Config.Chams then
+		hl = Instance.new("Highlight")
+		hl.Name = "VH_HL"
+		hl.Adornee = obj
+		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		hl.FillColor = color
+		hl.OutlineColor = color
+		hl.FillTransparency = Config.Chams and (kind == "monster" and 0.35 or 0.6) or 1
+		hl.OutlineTransparency = Config.Highlight and 0.05 or 1
+		hl.Parent = obj
+	end
+
+	Store[obj] = { Label = lbl, Bill = bill, HL = hl, Kind = kind, Name = text }
+end
+
+local function destroyEsp(obj)
+	local d = Store[obj]
+	if not d then return end
+	if d.Bill then d.Bill:Destroy() end
+	if d.HL then d.HL:Destroy() end
+	Store[obj] = nil
+end
+
+local function clearAll()
+	local ks = {}
+	for k in pairs(Store) do ks[#ks + 1] = k end
+	for _, k in ipairs(ks) do destroyEsp(k) end
+end
+
+local function refreshVisuals()
+	for _, d in pairs(Store) do
+		if d.HL then
+			d.HL.FillTransparency = Config.Chams and (d.Kind == "monster" and 0.35 or 0.6) or 1
+			d.HL.OutlineTransparency = Config.Highlight and 0.05 or 1
+		end
+	end
+end
+
+RunService.RenderStepped:Connect(function()
+	if not Config.Enabled then return end
+	local cp = Camera.CFrame.Position
+	for obj, d in pairs(Store) do
+		if not obj.Parent then
+			destroyEsp(obj)
+			continue
+		end
+		local a = anchorOf(obj)
+		if a then
+			local dist = (a.Position - cp).Magnitude
+			d.Label.Text = Config.Distance and (d.Name .. "  [" .. math.floor(dist) .. "m]") or d.Name
+			local vis = dist <= Config.MaxDist
+			d.Bill.Enabled = vis
+			if d.HL then d.HL.Enabled = vis end
+		end
+	end
+end)--=============================================================
+-- UI  (PARTE 2/3)
+--=============================================================
+local gui = Instance.new("ScreenGui")
+gui.Name = "VeniceHub_SOD"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999
+pcall(function() gui.Parent = gethui() end)
+if not gui.Parent then gui.Parent = LP:WaitForChild("PlayerGui") end
+
+local panel = Instance.new("Frame")
+panel.Size = UDim2.fromOffset(196, 320)
+panel.Position = UDim2.fromOffset(26, 110)
+panel.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
+panel.BackgroundTransparency = 0.08
+panel.BorderSizePixel = 0
+panel.Parent = gui
+Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
+
+local pStroke = Instance.new("UIStroke", panel)
+pStroke.Color = C_ITEM
+pStroke.Thickness = 1
+pStroke.Transparency = 0.55
+
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 30)
+header.BackgroundTransparency = 1
+header.Parent = panel
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -34, 1, 0)
+title.Position = UDim2.fromOffset(10, 0)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.TextSize = 13
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextColor3 = C_ITEM
+title.Text = "VENICE HUB | SOD v5"
+title.Parent = header
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.fromOffset(24, 24)
+closeBtn.Position = UDim2.new(1, -28, 0, 3)
+closeBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.TextSize = 12
+closeBtn.TextColor3 = Color3.fromRGB(230, 230, 230)
+closeBtn.BorderSizePixel = 0
+closeBtn.Parent = header
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 5)
+
+local buttons = {}
+
+local function makeRow(text, key, y)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1, -16, 0, 24)
+	b.Position = UDim2.fromOffset(8, y)
+	b.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = false
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 11
+	b.TextXAlignment = Enum.TextXAlignment.Left
+	b.TextColor3 = Color3.fromRGB(200, 200, 210)
+	b.Text = "  " .. text
+	b.Parent = panel
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
+
+	buttons[key] = b
+	b.MouseButton1Click:Connect(function()
+		Config[key] = not Config[key]
+		if key == "Enabled" and not Config.Enabled then clearAll() end
+		if key == "Highlight" or key == "Chams" then refreshVisuals() end
+		syncUI()
+	end)
+end
+
+function syncUI()
+	for key, b in pairs(buttons) do
+		local on = Config[key]
+		b.BackgroundColor3 = on and Color3.fromRGB(40, 52, 34) or Color3.fromRGB(24, 24, 30)
+		b.TextColor3 = on and C_SURV or Color3.fromRGB(120, 120, 130)
+	end
+end
+
+makeRow("ESP MASTER", "Enabled", 38)
+makeRow("Itens", "Items", 66)
+makeRow("Closets", "Closets", 94)
+makeRow("Portas", "Doors", 122)
+makeRow("Sobreviventes", "Survivors", 150)
+makeRow("Entidade", "Monster", 178)
+makeRow("Highlight", "Highlight", 206)
+makeRow("Chams", "Chams", 234)
+makeRow("Distancia", "Distance", 262)
+syncUI()
+
+local hint = Instance.new("TextLabel")
+hint.Size = UDim2.new(1, -16, 0, 24)
+hint.Position = UDim2.fromOffset(8, 292)
+hint.BackgroundTransparency = 1
+hint.Font = Enum.Font.Gotham
+hint.TextSize = 10
+hint.TextXAlignment = Enum.TextXAlignment.Left
+hint.TextColor3 = Color3.fromRGB(110, 110, 120)
+hint.Text = "  RightControl = abrir/fechar UI"
+hint.Parent = panel
+
+local dragging, dragStart, startPos
+header.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging, dragStart, startPos = true, input.Position, panel.Position
+	end
+end)
+UIS.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStart
+		panel.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+			startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+end)
+UIS.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
+end)
+
+closeBtn.MouseButton1Click:Connect(function() gui.Enabled = not gui.Enabled end)--=============================================================
+-- DETECCAO + SCAN + KEYBIND  (PARTE 3/3)
+--=============================================================
+local function readMonAttr(inst)
+	for _, a in ipairs(STRONG_ATTRS) do
+		local ok, v = pcall(function() return inst:GetAttribute(a) end)
+		if ok and v == true then
+			local k = inst:GetAttribute("EntityKind")
+			return tostring(k ~= nil and k or "ENTITY")
+		end
+	end
+	for _, a in ipairs(KIND_ATTRS) do
+		local ok, v = pcall(function() return inst:GetAttribute(a) end)
+		if ok and v ~= nil and v ~= false then
+			local s = tostring(v)
+			if s ~= "" and matches(s, MON_WORDS) then return s end
+		end
+	end
+	return nil
+end
+
+local function isMonsterPlayer(plr)
+	local ch = plr.Character
+	local kind = readMonAttr(plr) or (ch and readMonAttr(ch))
+	if kind then return true, kind end
+	if plr.Team and matches(plr.Team.Name, MON_WORDS) then return true, plr.Team.Name end
+	if CS:HasTag(plr, "Monster") or CS:HasTag(plr, "Entity") then return true, "ENTITY" end
+	if ch and (CS:HasTag(ch, "Monster") or CS:HasTag(ch, "Entity")) then return true, "ENTITY" end
+	if ch then
+		if matches(ch.Name, MON_WORDS) then return true, ch.Name end
+		for _, d in ipairs(ch:GetChildren()) do
+			if matches(d.Name, MON_WORDS) then return true, d.Name end
+		end
+	end
+	return false
+end
+
+local function isMonsterNpc(model)
+	if Players:GetPlayerFromCharacter(model) then return false end
+	local kind = readMonAttr(model)
+	if kind then return true, kind end
+	if CS:HasTag(model, "Monster") or CS:HasTag(model, "Entity") then return true, "ENTITY" end
+	if matches(model.Name, MON_WORDS) then return true, model.Name end
+	for _, d in ipairs(model:GetChildren()) do
+		if matches(d.Name, MON_WORDS) then return true, d.Name end
+	end
+	return false
+end
+
+local function rescan()
+	if not Config.Enabled then return end
+	local found = {}
+	local chars = {}
+
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr.Character then chars[plr.Character] = true end
+	end
+
+	local function inChar(inst)
+		local p = inst
+		while p and p ~= Workspace do
+			if chars[p] then return true end
+			p = p.Parent
+		end
+		return false
+	end
+
+	local function ancFound(inst)
+		local p = inst.Parent
+		while p and p ~= Workspace do
+			if found[p] then return true end
+			p = p.Parent
+		end
+		return false
+	end
+
+	-- PROMPTS: closets, portas, itens
+	for _, prompt in ipairs(Workspace:GetDescendants()) do
+		if prompt:IsA("ProximityPrompt") and prompt.Enabled then
+			local cand = prompt.Parent
+			if cand and cand ~= Workspace and not inChar(cand) and not found[cand] then
+				local nm  = cand.Name
+				local txt = tostring(prompt.ActionText) .. " " .. tostring(prompt.ObjectText)
+				local all = nm .. " " .. txt
+
+				if matches(all, CLOSET_KEYS) then
+					if Config.Closets then
+						found[cand] = true
+						createEsp(cand, "closet", C_CLOSET, "ESCONDERIJO " .. short(nm, 12))
+					end
+				elseif matches(all, DOOR_KEYS) then
+					if Config.Doors then
+						found[cand] = true
+						createEsp(cand, "door", C_DOOR, "PORTA " .. short(nm, 14))
+					end
+				elseif Config.Items then
+					if matches(txt, ITEM_GOOD) or matches(nm, ITEM_GOOD) or hasValueAttr(cand) then
+						found[cand] = true
+						createEsp(cand, "item", C_ITEM, short(nm, 22))
+					end
+				end
+			end
+		end
+	end
+
+	-- CLOSETS por nome
+	if Config.Closets then
+		for _, obj in ipairs(Workspace:GetDescendants()) do
+			if obj:IsA("Model") and not inChar(obj) and not found[obj] and not ancFound(obj)
+				and matches(obj.Name, CLOSET_KEYS) and not matches(obj.Name, DOOR_KEYS) then
+				found[obj] = true
+				createEsp(obj, "closet", C_CLOSET, "ESCONDERIJO " .. short(obj.Name, 12))
+			end
+		end
+	end
+
+	-- PORTAS por nome
+	if Config.Doors then
+		for _, obj in ipairs(Workspace:GetDescendants()) do
+			if obj:IsA("Model") and not inChar(obj) and not found[obj] and not ancFound(obj)
+				and matches(obj.Name, DOOR_KEYS) and not matches(obj.Name, CLOSET_KEYS) then
+				found[obj] = true
+				createEsp(obj, "door", C_DOOR, "PORTA " .. short(obj.Name, 14))
+			end
+		end
+	end
+
+	-- ITENS por atributo de valor
+	if Config.Items then
+		for _, obj in ipairs(Workspace:GetDescendants()) do
+			if obj:IsA("Model") and not inChar(obj) and not found[obj] and not ancFound(obj)
+				and hasValueAttr(obj) and not matches(obj.Name, CLOSET_KEYS)
+				and not matches(obj.Name, DOOR_KEYS) and not isMonsterNpc(obj) then
+				found[obj] = true
+				createEsp(obj, "item", C_ITEM, short(obj.Name, 22))
+			end
+		end
+	end
+
+	-- PLAYERS
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LP and plr.Character then
+			local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+			local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+			if hrp and hum and hum.Health > 0 then
+				local isMon, kind = isMonsterPlayer(plr)
+				if isMon then
+					if Config.Monster then
+						found[plr.Character] = true
+						createEsp(plr.Character, "monster", C_MONSTER,
+							"ENTIDADE [" .. short(kind, 12) .. "] " .. short(plr.DisplayName, 12))
+					end
+				elseif Config.Survivors then
+					found[plr.Character] = true
+					createEsp(plr.Character, "survivor", C_SURV, short(plr.DisplayName, 14))
+				end
+			end
+		end
+	end
+
+	-- ENTIDADE NPC (rodada ENTITY: AI)
+	if Config.Monster then
+		for _, obj in ipairs(Workspace:GetDescendants()) do
+			if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and not found[obj] then
+				local isMon, kind = isMonsterNpc(obj)
+				if isMon then
+					found[obj] = true
+					createEsp(obj, "monster", C_MONSTER, "ENTIDADE [" .. short(kind, 12) .. "]")
+				end
+			end
+		end
+	end
+
+	for obj in pairs(Store) do
+		if not obj.Parent or not found[obj] then destroyEsp(obj) end
+	end
+end
+
+task.spawn(function()
+	while true do
+		pcall(rescan)
+		task.wait(0.4)
+	end
+end)
+
+getgenv().SOD_Dump = function()
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local attrs = {}
+		for a, v in pairs(plr:GetAttributes()) do attrs[#attrs + 1] = a .. "=" .. tostring(v) end
+		print("[SOD] PLAYER", plr.Name, "team:", plr.Team and plr.Team.Name or "-",
+			"| attrs:", table.concat(attrs, ", "))
+	end
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid")
+			and not Players:GetPlayerFromCharacter(obj) then
+			print("[SOD] NPC:", obj.Name, "EntityKind:", tostring(obj:GetAttribute("EntityKind")))
+		end
+	end
+end
+
+UIS.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.RightControl then
+		gui.Enabled = not gui.Enabled
+	end
+end)
+
+print("[Venice Hub] Steal Or Die v5 carregado.")
